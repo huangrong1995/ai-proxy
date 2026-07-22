@@ -58,8 +58,9 @@ def read_key():
 
 def make_provider_config(preset, base_url, api_key, tier_map):
     m = dict(tier_map)
-    for v in m.values():
-        if v and v not in m: m[v] = v
+    # Add passthrough entries without mutating during iteration
+    passthrough = {v: v for v in m.values() if v and v not in m}
+    m.update(passthrough)
     m.setdefault("default", m.get("sonnet") or next(iter(m.values()), ""))
     return {
         "name": preset.name if preset.id != "custom" else base_url.split("//")[1].split("/")[0],

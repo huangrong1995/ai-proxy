@@ -619,10 +619,24 @@ def forward_request(
     for k, v in resp.headers.items():
         if k.lower() not in hop_by_hop:
             resp_headers[k] = v
+    log.info(f"[fw] check1: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     resp_headers["Content-Length"] = str(len(resp_body))
+    if b"event: message_start" in resp_body:
+        resp_headers["Content-Type"] = "text/event-stream"
 
-    resp_body = _convert_openai_response_to_anthropic(resp_body, provider)
+    log.info("[fw] before conversion")
+    try:
+        resp_body = _convert_openai_response_to_anthropic(resp_body, provider, body_bytes)
+        log.info(f"[fw] after conversion: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
+    except Exception as _ce:
+        log.warning(f"[fw] conversion exception: {_ce}")
+        import traceback; log.warning(traceback.format_exc())
+        log.warning(f"[conv] exception: {_ce}")
+        import traceback; log.warning(traceback.format_exc())
+    log.info(f"[fw] check1: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     resp_headers["Content-Length"] = str(len(resp_body))
+    if b"event: message_start" in resp_body:
+        resp_headers["Content-Type"] = "text/event-stream"
     return resp.status, resp_headers, resp_body
 
 
@@ -632,7 +646,9 @@ def forward_request(
 
 
 
-def _convert_openai_response_to_anthropic(resp_body: bytes, provider) -> bytes:
+def _convert_openai_response_to_anthropic(resp_body: bytes, provider, original_body: bytes = b"") -> bytes:
+    import json as _json
+    """Convert OpenAI Chat response to Anthropic format, wrapping in SSE if requested."""
     """Convert OpenAI Chat response to Anthropic format."""
     if provider.api_format != "openai_chat":
         return resp_body
@@ -668,7 +684,36 @@ def _convert_openai_response_to_anthropic(resp_body: bytes, provider) -> bytes:
                 "output_tokens": usage.get("completion_tokens", 0),
             },
         }
-        return json.dumps(anthropic).encode("utf-8")
+        result = json.dumps(anthropic).encode("utf-8")
+        # If original request had stream=true, wrap in SSE
+        log.info(f"[resp_convert] _was_streaming={getattr(provider, '_was_streaming', False)}")
+        requested_stream = getattr(provider, "_was_streaming", False)
+        if requested_stream:
+            sse_events = []
+            content_blocks = anthropic.get("content", [])
+            # message_start — wrap in {type: "message_start", message: {...}}
+            msg_start = {"type": "message_start", "message": anthropic}
+            sse_events.append(f"event: message_start\ndata: {_json.dumps(msg_start)}\n\n")
+            # content_block_start + deltas for each content block
+            for i, block in enumerate(content_blocks):
+                cbs = {"type": "content_block_start", "index": i, "content_block": block}
+                sse_events.append(f"event: content_block_start\ndata: {_json.dumps(cbs)}\n\n")
+                text = block.get("text", "")
+                if text:
+                    cbd = {"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": text}}
+                    sse_events.append(f"event: content_block_delta\ndata: {_json.dumps(cbd)}\n\n")
+                cbstop = {"type": "content_block_stop", "index": i}
+                sse_events.append(f"event: content_block_stop\ndata: {_json.dumps(cbstop)}\n\n")
+            # message_delta + stop
+            delta = {"stop_reason": anthropic.get("stop_reason",""), "stop_sequence": anthropic.get("stop_sequence")}
+            if anthropic.get("usage"):
+                delta["usage"] = anthropic["usage"]
+            md = {"type": "message_delta", "delta": delta}
+            sse_events.append(f"event: message_delta\ndata: {_json.dumps(md)}\n\n")
+            ms = {"type": "message_stop"}
+            sse_events.append(f"event: message_stop\ndata: {_json.dumps(ms)}\n\n")
+            result = "".join(sse_events).encode("utf-8")
+        return result
     except Exception:
         return resp_body
 
@@ -761,6 +806,7 @@ def transform_request(
     if provider.api_format == "openai_chat" and body.get("stream"):
         body["stream"] = False
         actions.append("disabled streaming for OpenAI format")
+        provider._was_streaming = True
 
     # 6. Convert Anthropic message format to OpenAI Chat format
     if provider.api_format == "openai_chat":
@@ -949,6 +995,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             record_request(pid, provider.name, model_name, status,
                           inp_tok, out_tok, cache_hit, agent)
             log.info(f"  -> {status} OK ({len(resp_body)} bytes) [{pid}]")
+            log.info(f"[fw] response CT={resp_headers.get('Content-Type','?')}, SSE in body={b'event: message_start' in resp_body}")
 
             self.send_response(status)
             for k, v in resp_headers.items():

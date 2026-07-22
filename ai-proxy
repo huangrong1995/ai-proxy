@@ -460,7 +460,6 @@ def main():
     }
 
     cmds[cmd]()
-    cmds[args.command]()
 
 
 if __name__ == "__main__":

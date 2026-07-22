@@ -68,7 +68,6 @@ TIERS = [
 
 STEP_NAMES = {1: "添加供应商", 2: "配置模型分层", 3: "添加更多供应商", 4: "选择默认供应商"}
 
-
 def print_step_header(step: int, total: int = 4):
     """Print step progress bar with header."""
     bar = Text()
@@ -84,28 +83,22 @@ def print_step_header(step: int, total: int = 4):
     console.print(bar2)
     console.print()
 
-
 def print_section(title: str):
     """Print a section divider."""
     console.print(f"  [bold {C['p']}]┌─ {title}[/bold {C['p']}]"
                   f"[{C['m']}]" + "─" * max(0, 50 - len(title)) + "[/" + C['m'] + "]")
 
-
 def print_ok(msg: str):
     console.print(f"  [{C['s']}]◆[/{C['s']}]  {msg}")
-
 
 def print_info(msg: str):
     console.print(f"  [{C['a']}]◇[/{C['a']}]  {msg}")
 
-
 def print_warn(msg: str):
     console.print(f"  [{C['w']}]◇[/{C['w']}]  {msg}")
 
-
 def print_err(msg: str):
     console.print(f"  [{C['e']}]◆[/{C['e']}]  {msg}")
-
 
 def load_config():
     if CONFIG_FILE.exists():
@@ -115,23 +108,20 @@ def load_config():
             pass
     return {}
 
-
 def save_config(config):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
 
-
 def read_key(existing_key=""):
     if existing_key:
         console.print(f"  [{C['m']}]已有 Key: {existing_key[:8]}...{existing_key[-4:]}[/{C['m']}]")
-        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True, default="")
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True)
         return k if k else existing_key
     while True:
-        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True, default="")
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True)
         if k:
             return k
         print_warn("API Key 不能为空")
-
 
 def make_provider_config(preset, base_url, api_key, tier_map):
     m = dict(tier_map)
@@ -149,7 +139,6 @@ def make_provider_config(preset, base_url, api_key, tier_map):
         "model_mapping": m,
         "tags": preset.tags,
     }
-
 
 def configure_tiers(available, preset):
     print_step_header(2)
@@ -182,7 +171,6 @@ def configure_tiers(available, preset):
         print_ok(f"{tn} = [bold]{sel}[/bold]")
     return mapping
 
-
 def pick_provider(existing):
     print_step_header(1)
     print_section("选择供应商")
@@ -198,7 +186,6 @@ def pick_provider(existing):
     if pid == "__custom__":
         return configure_custom()
     return configure_preset(pid, existing)
-
 
 def configure_preset(pid, existing):
     preset = find_preset(pid)
@@ -228,7 +215,6 @@ def configure_preset(pid, existing):
             tbl.add_row(f"  {m}")
         console.print(tbl)
     return (pid, make_provider_config(preset, url, key, configure_tiers(avail, preset)))
-
 
 def configure_custom():
     console.print()
@@ -263,7 +249,6 @@ def configure_custom():
     )
     return (fp.id, make_provider_config(fp, url, key, configure_tiers(avail, fp)))
 
-
 def pick_default(providers):
     print_step_header(4)
     print_section("选择默认供应商")
@@ -281,7 +266,6 @@ def pick_default(providers):
     ).ask() or pids[0]
     af = Confirm.ask(f"  [{C['p']}]?[/{C['p']}] 启用自动故障转移？", default=False)
     return d, af
-
 
 def render_summary(config):
     console.print()
@@ -303,7 +287,6 @@ def render_summary(config):
     fo = "ON" if config.get("auto_failover") else "OFF"
     console.print(f"  [{C['a']}]故障转移:[/{C['a']}] [bold]{fo}[/bold]")
     console.print(f"  [{C['m']}]配置: {CONFIG_FILE}[/{C['m']}]")
-
 
 def wizard():
     console.print()
@@ -363,7 +346,6 @@ def wizard():
         except Exception as e:
             print_err(f"启动失败: {e}")
 
-
 def main():
     ap = argparse.ArgumentParser(description="AI Proxy — 配置向导")
     ap.add_argument("--switch", action="store_true", help="切换默认供应商")
@@ -398,7 +380,6 @@ def main():
             save_config(c)
     else:
         wizard()
-
 
 if __name__ == "__main__":
     main()

@@ -23,3 +23,6 @@ config.json
 .idea/
 *.swp
 *.swo
+
+# 统计数据（自动生成）
+proxy_stats.db

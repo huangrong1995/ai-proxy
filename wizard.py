@@ -76,10 +76,14 @@ def configure_tiers(available, preset):
     for tid, tn, td, required in TIERS:
         sug = preset.tier_suggestions.get(tid)
         choices = [questionary.Choice(skip, value=skip)]
-        default = skip
+        # Default to first real model, unless suggestion is available
+        default = available[0] if available else skip
         for m in available:
-            label = m + " (推荐)" if m == sug else m
-            if m == sug: default = m
+            is_rec = m == sug
+            label = m
+            if is_rec:
+                label += "  (推荐)"
+                default = m
             choices.append(questionary.Choice(label, value=m))
         sel = questionary.select(f"[{tn}] {td}", choices=choices,
                                   default=default, pointer="\u25cf").ask()

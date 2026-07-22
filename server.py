@@ -195,6 +195,7 @@ class ProviderConfig:
     api_format: str = "anthropic"  # anthropic, openai_chat, openai_responses
     max_tokens_limit: Optional[int] = None
     model_mapping: dict = field(default_factory=dict)
+    vision_model: str = ""
     extra_headers: dict = field(default_factory=dict)
     tags: list = field(default_factory=list)
     weight: int = 1  # For weighted random selection among equals
@@ -215,6 +216,7 @@ class ProviderConfig:
             auth_type=d.get("auth_type", "x-api-key"),
             api_format=d.get("api_format", "anthropic"),
             max_tokens_limit=d.get("max_tokens_limit"),
+            vision_model=d.get("vision_model", ""),
             model_mapping=d.get("model_mapping", {}),
             extra_headers=d.get("extra_headers", {}),
             tags=d.get("tags", []),
@@ -628,6 +630,15 @@ def forward_request(
 # =============================================================================
 # Request Transform Pipeline
 # =============================================================================
+
+
+
+def _convert_image_block(block: dict) -> dict:
+    """Convert Anthropic-format image block to OpenAI format."""
+    src = block.get("source", {})
+    media_type = src.get("media_type", "image/jpeg")
+    data = src.get("data", "")
+    return {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}}
 
 def transform_request(
     body_bytes: bytes,

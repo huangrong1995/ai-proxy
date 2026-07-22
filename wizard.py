@@ -157,6 +157,25 @@ def configure_tiers(available,preset):
         print_ok(f"{tn} = [bold]{sel}[/bold]")
     return mapping
 
+def configure_vision_model(available, preset, tier_map):
+    """Let user pick a vision model for image requests."""
+    console.print(); print_step_header(2)
+    sug = preset.tier_suggestions.get("vision", "minimax-m3")
+    models = [m for m in available if m not in tier_map.values()] + list(tier_map.values())
+    models = list(dict.fromkeys(models))  # dedupe preserve order
+    choices = [questionary.Choice("(不配置 — 发图可能失败)", value="")]
+    for m in models:
+        rec = m == sug
+        choices.append(questionary.Choice(m + "  ◆ 推荐" if rec else m, value=m))
+    default = sug if sug in models else ""
+    sel = questionary.select(
+        "  ◈ 默认视觉模型 — 发图片时自动切换至此模型",
+        choices=choices, default=default, pointer="●", qmark="◈", style=QS
+    ).ask()
+    if sel: print_ok(f"视觉模型 = [bold]{sel}[/bold]")
+    else: print_info("未配置视觉模型，发图时将警告")
+    return sel or ""
+
 def pick_provider(existing):
     print_step_header(1); print_section("选择供应商")
     choices = [questionary.Choice(f"{p.name}  —  {p.base_url}",value=p.id) for p in PROVIDER_PRESETS]
@@ -182,7 +201,11 @@ def configure_preset(pid,existing):
         t=Table(show_header=False,box=None,padding=(0,2)); t.add_column("",style=C["m"])
         for m in avail: t.add_row(f"  {m}")
         console.print(t)
-    return (pid,make_provider_config(preset,url,key,configure_tiers(avail,preset)))
+    tiers = configure_tiers(avail, preset)
+    vision = configure_vision_model(avail, preset, tiers)
+    cfg = make_provider_config(preset,url,key,tiers)
+    cfg["vision_model"] = vision
+    return (pid, cfg)
 
 def configure_custom():
     console.print(); print_section("自定义供应商")
@@ -204,7 +227,11 @@ def configure_custom():
         if m: avail=[x.strip() for x in m.split(",") if x.strip()]
     fp = ProviderPreset(id=f"custom_{name.lower().replace(' ','-')}",name=name,base_url=url,
                         api_format=fmt,auth_type=at,known_models=avail,tier_suggestions={})
-    return (fp.id,make_provider_config(fp,url,key,configure_tiers(avail,fp)))
+    tiers = configure_tiers(avail,fp)
+    vision = configure_vision_model(avail,fp,tiers)
+    cfg = make_provider_config(fp,url,key,tiers)
+    cfg["vision_model"] = vision
+    return (fp.id, cfg)
 
 def pick_default(providers):
     print_step_header(4); print_section("选择默认供应商")

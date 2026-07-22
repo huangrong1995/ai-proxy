@@ -15,7 +15,8 @@
       "auth_type": "x-api-key",
       "api_format": "anthropic",
       "max_tokens_limit": 8000,
-      "model_mapping": {
+      "vision_model": "minimax-m3",
+    "model_mapping": {
         "minimax-m3": "minimax-m3",
         "deepseek-v4-pro": "deepseek-v4-pro",
         "haiku": "minimax-m3",

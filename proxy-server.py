@@ -756,10 +756,11 @@ def transform_request(
         if action:
             actions.append(action)
 
-    # 5. Handle `stream: True` -> inject stream_options for OpenAI-compatible
+    # 5. Handle stream — disable streaming for OpenAI Chat format (response must be
+    # full JSON for format conversion)
     if provider.api_format == "openai_chat" and body.get("stream"):
-        body.setdefault("stream_options", {})["include_usage"] = True
-        actions.append("injected stream_options.include_usage")
+        body["stream"] = False
+        actions.append("disabled streaming for OpenAI format")
 
     # 6. Convert Anthropic message format to OpenAI Chat format
     if provider.api_format == "openai_chat":

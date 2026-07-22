@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+import sqlite3
+from stats_recorder import init_stats_db as init_db, record_request, extract_tokens, get_response_model, detect_agent
 
 # =============================================================================
 # Constants
@@ -49,6 +51,7 @@ from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR / "config.json"
+STATS_DB = SCRIPT_DIR / "proxy_stats.db"
 CERTS_DIR = SCRIPT_DIR / "certs"
 CERT_FILE = CERTS_DIR / "cert.pem"
 KEY_FILE = CERTS_DIR / "key.pem"
@@ -861,17 +864,28 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
             # Record success
             pm.record_success(pid)
+            # Record stats
+            inp_tok, out_tok, cache_hit = extract_tokens(resp_body, client_type)
+            model_name = get_response_model(resp_body)
+            agent = detect_agent(client_type, self.path, self.headers)
+            record_request(pid, provider.name, model_name, status,
+                          inp_tok, out_tok, cache_hit, agent)
             log.info(f"  -> {status} OK ({len(resp_body)} bytes) [{pid}]")
 
             self.send_response(status)
             for k, v in resp_headers.items():
                 self.send_header(k, v)
             self.end_headers()
-            self.wfile.write(resp_body)
+            try:
+                self.wfile.write(resp_body)
+            except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, BrokenPipeError, OSError):
+                pass  # Client disconnected, ignore
 
         except urllib.error.HTTPError as e:
             err_body = e.read()
             pm.record_failure(pid)
+            record_request(pid, provider.name, body_json.get("model", "?"), e.code, 0, 0, False,
+                          detect_agent(client_type, self.path, self.headers))
             log.warning(f"  -> {e.code} [{pid}]: {err_body[:200]}")
 
             # If auto-failover is on, retry with next provider
@@ -972,11 +986,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         if extra:
             err.update(extra)
         body = json.dumps(err).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, BrokenPipeError, OSError):
+            pass  # Client disconnected
 
 
 # =============================================================================
@@ -1065,6 +1082,7 @@ def run_server(config: ProxyConfig, verbose: bool = False):
     print(f"  Press Ctrl+C to stop")
     print()
 
+    init_db()
     log.info(f"Proxy listening on https://{config.listen}")
     log.info(f"Providers: {list(pm.providers.keys())}")
     log.info(f"Auto-failover: {config.auto_failover}")

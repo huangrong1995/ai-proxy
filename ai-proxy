@@ -12,6 +12,7 @@ Commands:
     stop            停止代理服务
     restart         重启代理服务
     status          查看代理运行状态和供应商健康
+    stats           查看使用统计（模型/Agent/供应商消耗）
     config          查看当前配置摘要
     switch          快速切换默认供应商
 
@@ -91,6 +92,15 @@ COMMANDS_HELP = {
         "查看当前配置摘要\n"
         "  python3 ai-proxy config\n"
         "  展示所有供应商的模型分层配置"
+    ),
+    "stats": (
+        "查看使用统计（模型/Agent/供应商消耗）\n"
+        "  python3 ai-proxy stats\n"
+        "  python3 ai-proxy stats --since 24h\n"
+        "  python3 ai-proxy stats --since today\n"
+        "  python3 ai-proxy stats --json\n"
+        "  python3 ai-proxy stats --model qwen\n"
+        "  python3 ai-proxy stats --provider opencode"
     ),
     "switch": (
         "快速切换默认供应商\n"
@@ -359,18 +369,32 @@ def _fmt_uptime(seconds: int) -> str:
 
 # ── CLI entry point ─────────────────────────────────────────────────────────
 
+def cmd_stats():
+    """Show usage statistics."""
+    # Forward remaining args to stats.py directly
+    sys.path.insert(0, str(SCRIPT_DIR))
+    old_argv = sys.argv
+    try:
+        stats_args = [a for a in sys.argv[1:] if a != "stats"]
+        sys.argv = [sys.argv[0]] + stats_args
+        from stats import main as stats_main
+        stats_main()
+    finally:
+        sys.argv = old_argv
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="python3 ai-proxy",
         description="AI Proxy — Claude Code / Codex / Gemini 多供应商代理",
         epilog=HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
     )
 
     parser.add_argument(
         "command",
         nargs="?",
-        choices=list(COMMANDS_HELP.keys()),
         default="start",
         help="子命令（省略时等价于 start）",
     )
@@ -385,11 +409,27 @@ def main():
         help="前台运行（仅 start 命令有效）",
     )
 
-    args = parser.parse_args()
+    args, remaining = parser.parse_known_args()
+
+    cmd = args.command or "start"
+
+    # Show help for unknown commands
+    if cmd not in COMMANDS_HELP:
+        print(f"Unknown command: {cmd}\n")
+        parser.print_help()
+        return
 
     if args.version:
         print(f"AI Proxy v{VERSION}")
         print(f"Python: {sys.version}")
+        return
+
+    # Stats subcommand gets its own parser (pass through remaining args)
+    if cmd == "stats":
+        sys.path.insert(0, str(SCRIPT_DIR))
+        sys.argv = [sys.argv[0]] + remaining
+        from stats import main as stats_main
+        stats_main()
         return
 
     # Route to command
@@ -403,6 +443,7 @@ def main():
         "switch": lambda: cmd_switch(),
     }
 
+    cmds[cmd]()
     cmds[args.command]()
 
 

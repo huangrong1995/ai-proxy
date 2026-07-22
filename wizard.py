@@ -115,10 +115,10 @@ def save_config(config):
 def read_key(existing_key=""):
     if existing_key:
         console.print(f"  [{C['m']}]已有 Key: {existing_key[:8]}...{existing_key[-4:]}[/{C['m']}]")
-        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True)
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key")
         return k if k else existing_key
     while True:
-        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True)
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key")
         if k:
             return k
         print_warn("API Key 不能为空")

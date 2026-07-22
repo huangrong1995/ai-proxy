@@ -76,7 +76,8 @@ def save_config(config):
     CONFIG_FILE.parent.mkdir(parents=True,exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config,indent=2,ensure_ascii=False)+"\n")
 
-def sync_to_claude(config):
+    if Confirm.ask("  ◈  同步到 Claude Code 设置？\n  将更新 ~/.claude/settings.json 中的 API、模型、证书配置", default=True):
+        sync_to_claude(config)
     """Sync proxy config to ~/.claude/settings.json."""
     claude_dir = Path.home() / ".claude"
     claude_cfg = claude_dir / "settings.json"
@@ -275,7 +276,8 @@ def wizard():
         "providers": {**existing.get("providers",{}),**providers},
     }
     save_config(config); print_ok("配置已保存")
-    sync_to_claude(config)
+    if Confirm.ask("  ◈  同步到 Claude Code 设置？\n  将更新 ~/.claude/settings.json 中的 API、模型、证书配置", default=True):
+        sync_to_claude(config)
     render_summary(config)
     if Confirm.ask(f"  [{C['p']}]?[/{C['p']}] 立即启动代理？",default=True):
         sp = SCRIPT_DIR/"proxy-server.py"

@@ -188,20 +188,19 @@ def step_select_provider(existing: dict) -> Optional[tuple[str, dict]]:
     ))
 
     # ── Pick preset or custom ──
-    choices = [(p.id, f"{p.name:<20} {p.base_url}") for p in PROVIDER_PRESETS]
-    choices.append(("__custom__", "自定义供应商    手动输入 URL 和格式"))
-
     # Build choices for inquirer: (label, value)
-    select_choices = [(label, pid) for pid, label in choices]
+    select_choices = [(f"{p.name} — {p.base_url}", p.id) for p in PROVIDER_PRESETS]
+    select_choices.append(("自定义供应商 (手动输入 URL 和格式)", "__custom__"))
     question = [
         inquirer.List(
             "provider",
             message="选择供应商",
             choices=select_choices,
             carousel=True,
+            pointer="●",
         )
     ]
-    answer = inquirer.prompt(question)
+    answer = inquirer.prompt(questions)
     if answer is None:
         return None
     preset_id = answer["provider"]
@@ -283,6 +282,7 @@ def _configure_custom_provider() -> Optional[tuple[str, dict]]:
             message="API 格式",
             choices=[(fdesc, fid) for fid, fdesc in API_FORMAT_CHOICES],
             default="openai_chat",
+            pointer="●",
         )
     ]
     fmt_a = inquirer.prompt(fmt_q)
@@ -348,29 +348,27 @@ def _step_configure_tiers(available: list[str], preset: ProviderPreset) -> dict:
         default_suggestion = preset.tier_suggestions.get(tier_id)
 
         # Build select choices with default highlighted
-        choices_list = []
-        default_idx = 0
-        choices_list.append((f"   {skip_option}", skip_option))
-        for i, m in enumerate(available):
-            display = f"   {m}"
+        choices_list = [(skip_option, skip_option)]
+        default_value = skip_option
+        for m in available:
+            label = m
             if m == default_suggestion:
-                display += " (推荐)"
-            choices_list.append((display, m))
-            if m == default_suggestion:
-                default_idx = i + 1
+                label += " (推荐)"
+                default_value = m
+            choices_list.append((label, m))
 
-        console.print(f"\n  [bold]{tier_name}[/bold] — {tier_desc}")
-
-        question = [
+        msg = f"[{tier_name}] {tier_desc}"
+        questions = [
             inquirer.List(
                 "model",
-                message="选择模型（方向键导航，回车确认）",
+                message=msg,
                 choices=choices_list,
-                default=choices_list[default_idx][1] if default_idx > 0 else skip_option,
+                default=default_value,
                 carousel=True,
+                pointer="●",
             )
         ]
-        answer = inquirer.prompt(question)
+        answer = inquirer.prompt(questions)
         if answer is None:
             continue
 
@@ -383,8 +381,9 @@ def _step_configure_tiers(available: list[str], preset: ProviderPreset) -> dict:
                     inquirer.List(
                         "confirm",
                         message="仍要跳过?",
-                        choices=[("  否，继续配置", "n"), ("  是，跳过", "y")],
+                        choices=[("继续配置", "n"), ("跳过", "y")],
                         default="n",
+                        pointer="●",
                     )
                 ]
                 retry_a = inquirer.prompt(retry_q)
@@ -424,8 +423,8 @@ def step_default_provider(providers: dict) -> tuple[str, bool]:
     for pid in provider_ids:
         p = providers[pid]
         mm = p.get("model_mapping", {})
-        summary = f"Sonnet: {mm.get('sonnet', '?')} | Opus: {mm.get('opus', '?')}"
-        display = f"  {p.get('name', pid):<20} — {summary}"
+        summary = f"Sonnet: {mm.get('sonnet', '?')} / Opus: {mm.get('opus', '?')}"
+        display = f"{p.get('name', pid)} — {summary}"
         choices_list.append((display, pid))
 
     default_q = [
@@ -434,6 +433,7 @@ def step_default_provider(providers: dict) -> tuple[str, bool]:
             message="默认使用哪个供应商?",
             choices=choices_list,
             default=choices_list[0][1],
+            pointer="●",
         )
     ]
     default_a = inquirer.prompt(default_q)

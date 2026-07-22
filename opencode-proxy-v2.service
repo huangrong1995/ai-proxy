@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenCode Proxy v2 — Multi-provider HTTPS proxy for Claude Code / Codex
+Documentation=https://github.com/farion1231/cc-switch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/bin/python3 %h/opencode_proxy_v2/proxy_v2.py
+Restart=on-failure
+RestartSec=10
+# Auto-failover needs to re-resolve on restart
+Environment=PYTHONUNBUFFERED=1
+# Set your API keys here or in the environment
+# Environment=OPENCODE_API_KEY=sk-xxx
+# Environment=OPENROUTER_API_KEY=sk-xxx
+
+[Install]
+WantedBy=default.target

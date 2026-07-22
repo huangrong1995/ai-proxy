@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""
+OpenCode Proxy v2 — Unified CLI entry
+      for Claude Code, Codex CLI & Gemini CLI on WSL2
+
+Usage:
+    python3 proxy <command> [options]
+
+Commands:
+    wizard          交互式配置向导（首次使用）
+    start           启动代理服务（默认命令，可省略）
+    stop            停止代理服务
+    restart         重启代理服务
+    status          查看代理运行状态和供应商健康
+    config          查看当前配置摘要
+    switch          快速切换默认供应商
+
+Options:
+    --help, -h      显示帮助信息
+    --version       显示版本信息
+
+Examples:
+    python3 proxy wizard           # 首次配置
+    python3 proxy                  # 启动代理（等价于 start）
+    python3 proxy status           # 查看状态
+"""
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+VERSION = "2.0.0"
+
+# ── Help text ────────────────────────────────────────────────────────────────
+
+HELP_EPILOG = f"""\
+环境变量:
+  OPENCODE_API_KEY       OpenCode API Key（也可在向导中配置）
+
+配置文件:
+  config.json            供应商配置（向导生成，代理读取）
+
+文件结构:
+  {SCRIPT_DIR}/
+  ├── proxy              本入口脚本
+  ├── proxy_v2.py        代理服务核心
+  ├── wizard.py          交互式配置向导
+  ├── config.json        供应商配置
+  ├── certs/             TLS 证书（自动生成）
+  ├── providers/         供应商预设模块
+  └── proxy.log          运行日志
+
+常见问题:
+  • 首次使用:  python3 proxy wizard
+  • 启动代理:  python3 proxy start
+  • 查看日志:  tail -f proxy.log
+  • 重新配置:  python3 proxy wizard
+"""
+
+COMMANDS_HELP = {
+    "wizard": (
+        "交互式配置向导 — 首次使用或重新配置供应商\n"
+        "  python3 proxy wizard\n"
+        "  引导你添加供应商 → 配置模型分层 → 生成 config.json"
+    ),
+    "start": (
+        "启动代理服务（后台运行）\n"
+        "  python3 proxy start\n"
+        "  python3 proxy                # 默认命令，等价于 start"
+    ),
+    "stop": (
+        "停止代理服务\n"
+        "  python3 proxy stop"
+    ),
+    "restart": (
+        "重启代理服务\n"
+        "  python3 proxy restart"
+    ),
+    "status": (
+        "查看代理运行状态和供应商健康\n"
+        "  python3 proxy status\n"
+        "  显示代理是否在线、各供应商熔断状态、当前默认供应商"
+    ),
+    "config": (
+        "查看当前配置摘要\n"
+        "  python3 proxy config\n"
+        "  展示所有供应商的模型分层配置"
+    ),
+    "switch": (
+        "快速切换默认供应商\n"
+        "  python3 proxy switch\n"
+        "  从已配置的供应商中选一个设为默认"
+    ),
+}
+
+
+# ── Subcommand implementations ──────────────────────────────────────────────
+
+def cmd_wizard():
+    """Run the interactive setup wizard."""
+    wizard_path = SCRIPT_DIR / "wizard.py"
+    if not wizard_path.exists():
+        print("❌ wizard.py 未找到，请确认文件完整")
+        sys.exit(1)
+    _exec_python(wizard_path)
+
+
+def cmd_start(foreground: bool = False):
+    """Start the proxy server."""
+    if is_running():
+        pid = get_pid()
+        print(f"⚠ 代理已在运行 (PID: {pid})")
+        print(f"  运行 'python3 proxy status' 查看状态")
+        print(f"  运行 'python3 proxy restart' 重启")
+        return
+
+    proxy_path = SCRIPT_DIR / "proxy_v2.py"
+    log_path = SCRIPT_DIR / "proxy.log"
+
+    if not proxy_path.exists():
+        print("❌ proxy_v2.py 未找到")
+        sys.exit(1)
+
+    if foreground:
+        # Run in foreground (Ctrl+C to stop)
+        print(f"🚀 启动代理 (前台模式)...")
+        print(f"   按 Ctrl+C 停止\n")
+        _exec_python(proxy_path)
+    else:
+        # Start in background
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, str(proxy_path)],
+                stdout=open(log_path, "a"),
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                cwd=SCRIPT_DIR,
+                start_new_session=True,
+            )
+            time.sleep(1.5)
+            if proc.poll() is None:
+                print(f"✅ 代理已启动 (PID: {proc.pid})")
+                print(f"  日志: {log_path}")
+                print(f"  现在可以运行 claude 了 💡")
+            else:
+                print("❌ 代理启动失败，请检查日志:")
+                _show_log_tail(log_path)
+        except Exception as e:
+            print(f"❌ 启动失败: {e}")
+            sys.exit(1)
+
+
+def cmd_stop():
+    """Stop the proxy server."""
+    pid = get_pid()
+    if not pid:
+        print("ℹ 代理未在运行")
+        return
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        # Wait for it to stop
+        for _ in range(10):
+            time.sleep(0.3)
+            if not is_running():
+                print(f"✅ 代理已停止")
+                return
+        # Force kill
+        os.kill(pid, signal.SIGKILL)
+        print(f"✅ 代理已强制停止")
+    except ProcessLookupError:
+        print("ℹ 代理未在运行")
+    except Exception as e:
+        print(f"❌ 停止失败: {e}")
+        sys.exit(1)
+
+
+def cmd_restart():
+    """Restart the proxy."""
+    print("🔄 重启代理...")
+    cmd_stop()
+    time.sleep(1)
+    cmd_start()
+
+
+def cmd_status():
+    """Check proxy status."""
+    if is_running():
+        pid = get_pid()
+        print(f"✅ 代理正在运行 (PID: {pid})")
+        print()
+
+        # Try to get health info from the API
+        try:
+            import ssl
+            import urllib.request
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            req = urllib.request.Request("https://127.0.0.1:19443/status")
+            resp = urllib.request.urlopen(req, timeout=5, context=ctx)
+            data = json.loads(resp.read())
+
+            print(f"  运行时间: {_fmt_uptime(data.get('uptime_seconds', 0))}")
+            print(f"  默认供应商: {data.get('current_provider', '?')}")
+            print(f"  故障转移: {'开启' if data.get('auto_failover') else '关闭'}")
+            print()
+            print("  供应商状态:")
+            for pid, info in data.get("providers", {}).items():
+                icon = {"closed": "●", "half_open": "◐", "open": "○"}.get(
+                    info.get("state", ""), "?"
+                )
+                color = {"closed": "32", "half_open": "33", "open": "31"}.get(
+                    info.get("state", ""), "0"
+                )
+                cur = " ⬅ 当前" if info.get("is_current") else ""
+                print(f"    \033[{color}m{icon}\033[0m {info['name']:<20} "
+                      f"[{info.get('api_format','?'):>18}]"
+                      f" 成功:{info.get('total_successes',0)}"
+                      f" 失败:{info.get('total_failures',0)}{cur}")
+
+        except Exception:
+            print("  ⚠ 代理进程存在但无法获取状态（可能刚启动）")
+            print(f"  查看日志: tail -f {SCRIPT_DIR}/proxy.log")
+    else:
+        print("ℹ 代理未在运行")
+        print(f"  启动: python3 proxy start")
+        print(f"  配置: python3 proxy wizard")
+
+
+def cmd_config():
+    """Show current configuration."""
+    config_file = SCRIPT_DIR / "config.json"
+    if not config_file.exists():
+        print("ℹ 尚未配置，请先运行: python3 proxy wizard")
+        return
+
+    try:
+        with open(config_file) as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"❌ 配置文件读取失败: {e}")
+        return
+
+    providers = config.get("providers", {})
+    if not providers:
+        print("ℹ 尚未配置供应商")
+        return
+
+    default_pid = config.get("default_provider", "")
+    auto_failover = config.get("auto_failover", False)
+
+    print(f"┌─ 配置摘要{'─' * 40}┐")
+    print(f"│ 默认供应商: {default_pid:<30} │")
+    print(f"│ 故障转移:   {'开启' if auto_failover else '关闭':<30} │")
+    print(f"├─{'─' * 50}┤")
+
+    for pid, p in providers.items():
+        mm = p.get("model_mapping", {})
+        cur = " ⬅ 默认" if pid == default_pid else ""
+        print(f"│ {p.get('name', pid)}{cur}")
+        print(f"│   格式: {p.get('api_format', '?')}")
+        print(f"│   地址: {p.get('base_url', '?')}")
+        if mm:
+            haiku = mm.get("haiku", "-")
+            sonnet = mm.get("sonnet", "-")
+            opus = mm.get("opus", "-")
+            fable = mm.get("fable", "-")
+            print(f"│   Haiku → {haiku:<30} │")
+            print(f"│   Sonnet → {sonnet:<30} │")
+            print(f"│   Opus → {opus:<30}   │")
+            if fable and fable != "-":
+                print(f"│   Fable → {fable:<30}  │")
+        print(f"├─{'─' * 50}┤")
+
+    print(f"└─{'─' * 50}┘")
+    print(f"  配置文件: {config_file}")
+
+
+def cmd_switch():
+    """Quick switch default provider."""
+    if not is_running():
+        print("⚠ 代理未运行，配置切换将在下次启动时生效")
+
+    wizard_path = SCRIPT_DIR / "wizard.py"
+    if not wizard_path.exists():
+        print("❌ wizard.py 未找到")
+        sys.exit(1)
+
+    subprocess.run(
+        [sys.executable, str(wizard_path), "--switch"],
+        cwd=SCRIPT_DIR,
+    )
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def is_running() -> bool:
+    """Check if the proxy process is running."""
+    pid = get_pid()
+    if pid:
+        try:
+            os.kill(pid, 0)  # Check if process exists
+            return True
+        except (ProcessLookupError, PermissionError):
+            pass
+    return False
+
+
+def get_pid() -> int | None:
+    """Get the PID of the running proxy, if any."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "proxy_v2.py"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            pids = [int(p) for p in result.stdout.strip().split()]
+            # Exclude our own process
+            return pids[0] if pids else None
+    except (subprocess.TimeoutExpired, ValueError):
+        pass
+    return None
+
+
+def _exec_python(path: Path):
+    """Replace current process with the target Python script."""
+    os.execvp(sys.executable, [sys.executable, str(path)])
+
+
+def _show_log_tail(log_path: Path, lines: int = 10):
+    """Print last N lines of the log file."""
+    try:
+        with open(log_path) as f:
+            content = f.readlines()
+        for line in content[-lines:]:
+            print(f"  {line.rstrip()}")
+    except (OSError, IOError):
+        pass
+
+
+def _fmt_uptime(seconds: int) -> str:
+    """Format uptime seconds into human-readable string."""
+    if seconds < 60:
+        return f"{seconds}秒"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}分{seconds % 60}秒"
+    hours = minutes // 60
+    return f"{hours}小时{minutes % 60}分"
+
+
+# ── CLI entry point ─────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="python3 proxy",
+        description="OpenCode Proxy v2 — Claude Code / Codex / Gemini 多供应商代理",
+        epilog=HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=list(COMMANDS_HELP.keys()),
+        default="start",
+        help="子命令（省略时等价于 start）",
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="store_true",
+        help="显示版本信息",
+    )
+    parser.add_argument(
+        "--foreground", "-f",
+        action="store_true",
+        help="前台运行（仅 start 命令有效）",
+    )
+
+    args = parser.parse_args()
+
+    if args.version:
+        print(f"OpenCode Proxy v{VERSION}")
+        print(f"Python: {sys.version}")
+        return
+
+    # Route to command
+    cmds = {
+        "wizard": lambda: cmd_wizard(),
+        "start": lambda: cmd_start(foreground=args.foreground),
+        "stop": lambda: cmd_stop(),
+        "restart": lambda: cmd_restart(),
+        "status": lambda: cmd_status(),
+        "config": lambda: cmd_config(),
+        "switch": lambda: cmd_switch(),
+    }
+
+    cmds[args.command]()
+
+
+if __name__ == "__main__":
+    main()

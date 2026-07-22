@@ -1,0 +1,25 @@
+# TLS 证书和私钥
+certs/ca.key
+certs/server.key
+certs/key.pem
+certs/cert.pem
+certs/*.srl
+certs/server.csr
+certs/san.ext
+
+# 运行日志
+proxy.log
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 配置文件含 API Key，不应提交
+config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

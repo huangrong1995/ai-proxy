@@ -1,0 +1,29 @@
+{
+  "listen": "127.0.0.1:19443",
+  "default_provider": "opencode",
+  "auto_failover": false,
+  "cert_dir": "certs",
+  "body_filter": {
+    "enabled": true,
+    "whitelist": ["_metadata"]
+  },
+  "providers": {
+    "opencode": {
+      "name": "OpenCode",
+      "base_url": "https://opencode.ai/zen/go",
+      "api_key": "YOUR_API_KEY_HERE",
+      "auth_type": "x-api-key",
+      "api_format": "anthropic",
+      "max_tokens_limit": 8000,
+      "model_mapping": {
+        "minimax-m3": "minimax-m3",
+        "deepseek-v4-pro": "deepseek-v4-pro",
+        "haiku": "minimax-m3",
+        "sonnet": "deepseek-v4-pro",
+        "opus": "glm-5.2",
+        "default": "deepseek-v4-pro"
+      },
+      "tags": ["tool_capable"]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-"""Stats recording module — called by server.py to log request data to SQLite."""
+"""Stats recording module — called by proxy-server.py to log request data to SQLite."""
 import json, sqlite3, datetime
 from pathlib import Path
 

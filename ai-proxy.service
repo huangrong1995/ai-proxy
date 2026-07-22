@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/bin/python3 %h/ai-proxy/server.py
+ExecStart=/usr/bin/python3 %h/ai-proxy/proxy-proxy-server.py
 Restart=on-failure
 RestartSec=10
 # Auto-failover needs to re-resolve on restart

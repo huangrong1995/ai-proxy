@@ -277,16 +277,16 @@ def wizard():
     sync_to_claude(config)
     render_summary(config)
     if Confirm.ask(f"  [{C['p']}]?[/{C['p']}] 立即启动代理？",default=True):
-        sp = SCRIPT_DIR/"server.py"
-        if not sp.exists(): return print_err("server.py 未找到")
-        r = subprocess.run(["pgrep","-f","server.py"],capture_output=True,text=True,timeout=5)
+        sp = SCRIPT_DIR/"proxy-server.py"
+        if not sp.exists(): return print_err("proxy-server.py 未找到")
+        r = subprocess.run(["pgrep","-f","proxy-server.py"],capture_output=True,text=True,timeout=5)
         if r.returncode==0 and r.stdout.strip(): return print_warn("代理已在运行中")
         try:
             proc = subprocess.Popen([sys.executable,str(sp)],
                 stdout=open(SCRIPT_DIR/"proxy.log","a"),stderr=subprocess.STDOUT,cwd=SCRIPT_DIR)
             time.sleep(1)
             if proc.poll() is None: print_ok(f"代理已启动 (PID: {proc.pid})"); print_info("运行 [bold]claude[/bold] 开始使用  ◆")
-            else: print_err("代理启动失败，请手动运行 python3 server.py")
+            else: print_err("代理启动失败，请手动运行 python3 proxy-server.py")
         except Exception as e: print_err(f"启动失败: {e}")
 
 def main():

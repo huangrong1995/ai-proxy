@@ -15,10 +15,10 @@ Features:
   - Config-driven (JSON file, no hardcoded values)
 
 Usage:
-    python3 server.py                    # Start proxy
-    python3 server.py --config custom.json  # Custom config
-    python3 server.py --generate-certs     # Regenerate TLS certs
-    python3 server.py --status             # Quick health check
+    python3 proxy-server.py                    # Start proxy
+    python3 proxy-server.py --config custom.json  # Custom config
+    python3 proxy-server.py --generate-certs     # Regenerate TLS certs
+    python3 proxy-server.py --status             # Quick health check
 
 Dependencies: Python 3.10+ (stdlib only, zero external packages)
 """

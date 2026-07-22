@@ -644,8 +644,8 @@ def _convert_openai_response_to_anthropic(resp_body: bytes, provider) -> bytes:
         msg = choice.get("message", {})
         usage = data.get("usage", {})
         content = []
-        if msg.get("content"):
-            content.append({"type": "text", "text": msg["content"]})
+        if msg.get("content") is not None:
+            content.append({"type": "text", "text": msg["content"] or ""})
         if msg.get("tool_calls"):
             for tc in msg["tool_calls"]:
                 content.append({

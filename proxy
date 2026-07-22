@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenCode Proxy v2 — Unified CLI entry
+AI Proxy — Unified CLI entry
       for Claude Code, Codex CLI & Gemini CLI on WSL2
 
 Usage:
@@ -49,7 +49,7 @@ HELP_EPILOG = f"""\
 文件结构:
   {SCRIPT_DIR}/
   ├── proxy              本入口脚本
-  ├── proxy_v2.py        代理服务核心
+  ├── server.py            代理服务核心
   ├── wizard.py          交互式配置向导
   ├── config.json        供应商配置
   ├── certs/             TLS 证书（自动生成）
@@ -120,11 +120,11 @@ def cmd_start(foreground: bool = False):
         print(f"  运行 'python3 proxy restart' 重启")
         return
 
-    proxy_path = SCRIPT_DIR / "proxy_v2.py"
+    proxy_path = SCRIPT_DIR / "server.py"
     log_path = SCRIPT_DIR / "proxy.log"
 
     if not proxy_path.exists():
-        print("❌ proxy_v2.py 未找到")
+        print("❌ server.py 未找到")
         sys.exit(1)
 
     if foreground:
@@ -318,7 +318,7 @@ def get_pid() -> int | None:
     """Get the PID of the running proxy, if any."""
     try:
         result = subprocess.run(
-            ["pgrep", "-f", "proxy_v2.py"],
+                ["pgrep", "-f", "server.py"],
             capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
@@ -362,7 +362,7 @@ def _fmt_uptime(seconds: int) -> str:
 def main():
     parser = argparse.ArgumentParser(
         prog="python3 proxy",
-        description="OpenCode Proxy v2 — Claude Code / Codex / Gemini 多供应商代理",
+        description="AI Proxy — Claude Code / Codex / Gemini 多供应商代理",
         epilog=HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

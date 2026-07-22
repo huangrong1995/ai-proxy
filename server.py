@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-OpenCode Proxy v2 — Multi-provider HTTPS reverse proxy
+AI Proxy — Multi-provider HTTPS reverse proxy
       for Claude Code, Codex CLI & Gemini CLI on WSL2
 
 Inspired by CC Switch (farion1231/cc-switch) — a Tauri desktop app for
 managing AI coding client configurations and API proxies.
 
-Key features over v1:
+Features:
   - Multi-provider with automatic failover (circuit breaker)
   - Tiered model mapping (haiku/sonnet/opus/fable → custom models)
   - Request body sanitization (strip private underscore-prefixed params)
@@ -15,10 +15,10 @@ Key features over v1:
   - Config-driven (JSON file, no hardcoded values)
 
 Usage:
-    python3 proxy_v2.py                    # Start proxy
-    python3 proxy_v2.py --config custom.json  # Custom config
-    python3 proxy_v2.py --generate-certs     # Regenerate TLS certs
-    python3 proxy_v2.py --status             # Quick health check
+    python3 server.py                    # Start proxy
+    python3 server.py --config custom.json  # Custom config
+    python3 server.py --generate-certs     # Regenerate TLS certs
+    python3 server.py --status             # Quick health check
 
 Dependencies: Python 3.10+ (stdlib only, zero external packages)
 """

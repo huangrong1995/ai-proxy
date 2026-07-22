@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-OpenCode Proxy v2 — Interactive Setup Wizard
+AI Proxy — Interactive Setup Wizard
 
 Guides users through configuring model providers and assigning model tiers,
-then generates a ready-to-use config.json for proxy_v2.py.
+then generates a ready-to-use config.json for server.py.
 
 Usage:
     python3 wizard.py              # Full 4-step wizard
@@ -448,16 +448,16 @@ def render_summary(config: dict):
 def prompt_start_proxy():
     """Ask if user wants to start the proxy."""
     if Confirm.ask("\n[cyan]?[/cyan] 立即启动代理?", default=True):
-        # Check if proxy_v2.py exists
-        proxy_path = SCRIPT_DIR / "proxy_v2.py"
+        # Check if server.py exists
+        proxy_path = SCRIPT_DIR / "server.py"
         if not proxy_path.exists():
-            console.print("[red]proxy_v2.py 未找到[/red]")
+            console.print("[red]server.py 未找到[/red]")
             return
 
         # Check if already running
         import subprocess
         result = subprocess.run(
-            ["pgrep", "-f", "proxy_v2.py"],
+            ["pgrep", "-f", "server.py"],
             capture_output=True, text=True,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -479,7 +479,7 @@ def prompt_start_proxy():
                 console.print(f"  日志: {log_path}")
                 console.print("  现在可以运行 [bold]claude[/bold] 了 💡")
             else:
-                console.print("[red]代理启动失败，请手动运行 python3 proxy_v2.py[/red]")
+                console.print("[red]代理启动失败，请手动运行 python3 server.py[/red]")
         except Exception as e:
             console.print(f"[red]启动失败: {e}[/red]")
 

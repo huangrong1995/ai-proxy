@@ -64,7 +64,7 @@ USER_AGENT = "claude-code/2.1.206"
 
 # Standard Anthropic model tiers (lowercased for matching)
 MODEL_TIERS = {
-    "haiku":  ["haiku"],
+    "haiku":  ["haiku", "flash"],
     "sonnet": ["sonnet"],
     "opus":   ["opus"],
     "fable":  ["fable"],

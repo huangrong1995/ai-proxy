@@ -9,10 +9,10 @@
 
 ```bash
 # 1. 交互式配置供应商
-python3 proxy wizard
+python3 ai-proxy wizard
 
 # 2. 启动代理
-python3 proxy start
+python3 ai-proxy start
 
 # 3. 运行 Claude Code
 claude
@@ -21,14 +21,14 @@ claude
 ## 使用方式
 
 ```bash
-python3 proxy              # 启动代理
-python3 proxy wizard       # 配置/重配供应商
-python3 proxy status       # 查看运行状态
-python3 proxy config       # 查看当前配置
-python3 proxy switch       # 切换默认供应商
-python3 proxy stop         # 停止代理
-python3 proxy restart      # 重启代理
-python3 proxy --help       # 帮助
+python3 ai-proxy              # 启动代理
+python3 ai-proxy wizard       # 配置/重配供应商
+python3 ai-proxy status       # 查看运行状态
+python3 ai-proxy config       # 查看当前配置
+python3 ai-proxy switch       # 切换默认供应商
+python3 ai-proxy stop         # 停止代理
+python3 ai-proxy restart      # 重启代理
+python3 ai-proxy --help       # 帮助
 ```
 
 ## 支持的供应商

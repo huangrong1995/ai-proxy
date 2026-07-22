@@ -4,7 +4,7 @@ AI Proxy — Unified CLI entry
       for Claude Code, Codex CLI & Gemini CLI on WSL2
 
 Usage:
-    python3 proxy <command> [options]
+    python3 ai-proxy <command> [options]
 
 Commands:
     wizard          交互式配置向导（首次使用）
@@ -20,9 +20,9 @@ Options:
     --version       显示版本信息
 
 Examples:
-    python3 proxy wizard           # 首次配置
-    python3 proxy                  # 启动代理（等价于 start）
-    python3 proxy status           # 查看状态
+    python3 ai-proxy wizard           # 首次配置
+    python3 ai-proxy                  # 启动代理（等价于 start）
+    python3 ai-proxy status           # 查看状态
 """
 
 import argparse
@@ -48,7 +48,7 @@ HELP_EPILOG = f"""\
 
 文件结构:
   {SCRIPT_DIR}/
-  ├── proxy              本入口脚本
+  ├── ai-proxy           本入口脚本
   ├── server.py            代理服务核心
   ├── wizard.py          交互式配置向导
   ├── config.json        供应商配置
@@ -57,44 +57,44 @@ HELP_EPILOG = f"""\
   └── proxy.log          运行日志
 
 常见问题:
-  • 首次使用:  python3 proxy wizard
-  • 启动代理:  python3 proxy start
+  • 首次使用:  python3 ai-proxy wizard
+  • 启动代理:  python3 ai-proxy start
   • 查看日志:  tail -f proxy.log
-  • 重新配置:  python3 proxy wizard
+  • 重新配置:  python3 ai-proxy wizard
 """
 
 COMMANDS_HELP = {
     "wizard": (
         "交互式配置向导 — 首次使用或重新配置供应商\n"
-        "  python3 proxy wizard\n"
+        "  python3 ai-proxy wizard\n"
         "  引导你添加供应商 → 配置模型分层 → 生成 config.json"
     ),
     "start": (
         "启动代理服务（后台运行）\n"
-        "  python3 proxy start\n"
-        "  python3 proxy                # 默认命令，等价于 start"
+        "  python3 ai-proxy start\n"
+        "  python3 ai-proxy                # 默认命令，等价于 start"
     ),
     "stop": (
         "停止代理服务\n"
-        "  python3 proxy stop"
+        "  python3 ai-proxy stop"
     ),
     "restart": (
         "重启代理服务\n"
-        "  python3 proxy restart"
+        "  python3 ai-proxy restart"
     ),
     "status": (
         "查看代理运行状态和供应商健康\n"
-        "  python3 proxy status\n"
+        "  python3 ai-proxy status\n"
         "  显示代理是否在线、各供应商熔断状态、当前默认供应商"
     ),
     "config": (
         "查看当前配置摘要\n"
-        "  python3 proxy config\n"
+        "  python3 ai-proxy config\n"
         "  展示所有供应商的模型分层配置"
     ),
     "switch": (
         "快速切换默认供应商\n"
-        "  python3 proxy switch\n"
+        "  python3 ai-proxy switch\n"
         "  从已配置的供应商中选一个设为默认"
     ),
 }
@@ -116,8 +116,8 @@ def cmd_start(foreground: bool = False):
     if is_running():
         pid = get_pid()
         print(f"⚠ 代理已在运行 (PID: {pid})")
-        print(f"  运行 'python3 proxy status' 查看状态")
-        print(f"  运行 'python3 proxy restart' 重启")
+        print(f"  运行 'python3 ai-proxy status' 查看状态")
+        print(f"  运行 'python3 ai-proxy restart' 重启")
         return
 
     proxy_path = SCRIPT_DIR / "server.py"
@@ -231,15 +231,15 @@ def cmd_status():
             print(f"  查看日志: tail -f {SCRIPT_DIR}/proxy.log")
     else:
         print("ℹ 代理未在运行")
-        print(f"  启动: python3 proxy start")
-        print(f"  配置: python3 proxy wizard")
+        print(f"  启动: python3 ai-proxy start")
+        print(f"  配置: python3 ai-proxy wizard")
 
 
 def cmd_config():
     """Show current configuration."""
     config_file = SCRIPT_DIR / "config.json"
     if not config_file.exists():
-        print("ℹ 尚未配置，请先运行: python3 proxy wizard")
+        print("ℹ 尚未配置，请先运行: python3 ai-proxy wizard")
         return
 
     try:
@@ -361,7 +361,7 @@ def _fmt_uptime(seconds: int) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="python3 proxy",
+        prog="python3 ai-proxy",
         description="AI Proxy — Claude Code / Codex / Gemini 多供应商代理",
         epilog=HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,

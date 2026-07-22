@@ -413,6 +413,11 @@ def main():
 
     cmd = args.command or "start"
 
+    # Handle --help
+    if "--help" in remaining or "-h" in remaining:
+        parser.print_help()
+        return
+
     # Show help for unknown commands
     if cmd not in COMMANDS_HELP:
         print(f"Unknown command: {cmd}\n")

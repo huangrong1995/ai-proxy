@@ -124,10 +124,10 @@ def save_config(config):
 def read_key(existing_key=""):
     if existing_key:
         console.print(f"  [{C['m']}]已有 Key: {existing_key[:8]}...{existing_key[-4:]}[/{C['m']}]")
-        k = getpass.getpass(f"  [{C['p']}]?[/{C['p']}] API Key (Enter 保持不变): ").strip()
-        return k or existing_key
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True, default="")
+        return k if k else existing_key
     while True:
-        k = getpass.getpass(f"  [{C['p']}]?[/{C['p']}] API Key: ").strip()
+        k = Prompt.ask(f"  [{C['p']}]◇[/{C['p']}]  API Key", password=True, default="")
         if k:
             return k
         print_warn("API Key 不能为空")

@@ -11,7 +11,7 @@ Usage:
     python3 wizard.py --show       # Show current config
     python3 wizard.py --provider opencode  # Reconfigure one provider
 
-Dependencies: rich (auto-installed if missing)
+Dependencies: rich, inquirer (auto-installed if missing)
 """
 
 import argparse
@@ -44,6 +44,16 @@ except ImportError:
     from rich.prompt import Prompt, Confirm
     from rich.text import Text
     from rich import print as rprint
+
+# Ensure inquirer is available (for interactive select menus)
+try:
+    import inquirer
+except ImportError:
+    print("正在安装 inquirer (交互选择库)...")
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "inquirer", "-q"]
+    )
+    import inquirer
 
 # Project paths
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -181,20 +191,20 @@ def step_select_provider(existing: dict) -> Optional[tuple[str, dict]]:
     choices = [(p.id, f"{p.name:<20} {p.base_url}") for p in PROVIDER_PRESETS]
     choices.append(("__custom__", "自定义供应商    手动输入 URL 和格式"))
 
-    from rich.prompt import Prompt
-
-    console.print("\n[bold]可选供应商:[/bold]")
-    for i, (pid, label) in enumerate(choices, 1):
-        console.print(f"  {i}. {label}")
-
-    choice = Prompt.ask(
-        "\n[cyan]?[/cyan] 选择供应商",
-        choices=[str(i) for i in range(1, len(choices) + 1)],
-        default="1",
-    )
-
-    selected = choices[int(choice) - 1]
-    preset_id = selected[0]
+    # Build choices for inquirer: (label, value)
+    select_choices = [(label, pid) for pid, label in choices]
+    question = [
+        inquirer.List(
+            "provider",
+            message="选择供应商",
+            choices=select_choices,
+            carousel=True,
+        )
+    ]
+    answer = inquirer.prompt(question)
+    if answer is None:
+        return None
+    preset_id = answer["provider"]
 
     if preset_id == "__custom__":
         return _configure_custom_provider()
@@ -267,11 +277,18 @@ def _configure_custom_provider() -> Optional[tuple[str, dict]]:
         base_url = "https://" + base_url
 
     # API format
-    console.print("\n  API 格式:")
-    for i, (fid, fdesc) in enumerate(API_FORMAT_CHOICES, 1):
-        console.print(f"    {i}. {fdesc}")
-    fmt_choice = Prompt.ask("  [cyan]?[/cyan] 选择", choices=["1", "2"], default="1")
-    api_format = API_FORMAT_CHOICES[int(fmt_choice) - 1][0]
+    fmt_q = [
+        inquirer.List(
+            "api_format",
+            message="API 格式",
+            choices=[(fdesc, fid) for fid, fdesc in API_FORMAT_CHOICES],
+            default="openai_chat",
+        )
+    ]
+    fmt_a = inquirer.prompt(fmt_q)
+    if fmt_a is None:
+        return None
+    api_format = fmt_a["api_format"]
 
     # Auth type
     auth_type = "x-api-key" if api_format == "anthropic" else "bearer"
@@ -317,7 +334,7 @@ def _configure_custom_provider() -> Optional[tuple[str, dict]]:
 # ── Step 2: Configure Model Tiers ───────────────────────────────────────────
 
 def _step_configure_tiers(available: list[str], preset: ProviderPreset) -> dict:
-    """Interactive model tier assignment.
+    """Interactive model tier assignment using arrow-key selection.
 
     Returns a dict like {"haiku": "minimax-m3", "sonnet": "deepseek-v4-pro", ...}
     """
@@ -325,45 +342,60 @@ def _step_configure_tiers(available: list[str], preset: ProviderPreset) -> dict:
     console.print("  将模型分配到不同的能力层级，Claude Code 会根据场景自动选择\n")
 
     mapping = {}
-    choices = ["(不配置)"] + available
+    skip_option = "(不配置)"
 
     for tier_id, tier_name, tier_desc, required in TIERS:
         default_suggestion = preset.tier_suggestions.get(tier_id)
 
-        # Set default selection index
+        # Build select choices with default highlighted
+        choices_list = []
         default_idx = 0
-        if default_suggestion and default_suggestion in choices:
-            default_idx = choices.index(default_suggestion)
-        elif available:
-            default_idx = 1  # first real model
+        choices_list.append((f"   {skip_option}", skip_option))
+        for i, m in enumerate(available):
+            display = f"   {m}"
+            if m == default_suggestion:
+                display += " (推荐)"
+            choices_list.append((display, m))
+            if m == default_suggestion:
+                default_idx = i + 1
 
-        label = f"[cyan]?[/cyan] {tier_name} — {tier_desc}"
+        console.print(f"\n  [bold]{tier_name}[/bold] — {tier_desc}")
 
-        choice = Prompt.ask(
-            f"\n  {label}",
-            choices=[str(i) for i in range(len(choices))],
-            default=str(default_idx),
-            show_choices=False,
-        )
+        question = [
+            inquirer.List(
+                "model",
+                message="选择模型（方向键导航，回车确认）",
+                choices=choices_list,
+                default=choices_list[default_idx][1] if default_idx > 0 else skip_option,
+                carousel=True,
+            )
+        ]
+        answer = inquirer.prompt(question)
+        if answer is None:
+            continue
 
-        idx = int(choice)
-        if idx == 0:
+        selected = answer["model"]
+
+        if selected == skip_option:
             if required:
                 console.print(f"  [yellow]⚠ {tier_name} 建议配置，否则将使用默认模型[/yellow]")
-                retry = Prompt.ask(
-                    f"  [cyan]?[/cyan] 仍要跳过?",
-                    choices=["y", "n"],
-                    default="n",
-                )
-                if retry == "y":
+                retry_q = [
+                    inquirer.List(
+                        "confirm",
+                        message="仍要跳过?",
+                        choices=[("  否，继续配置", "n"), ("  是，跳过", "y")],
+                        default="n",
+                    )
+                ]
+                retry_a = inquirer.prompt(retry_q)
+                if retry_a and retry_a["confirm"] == "y":
                     continue
-                # Re-prompt
-                idx = default_idx or 1
+                # Re-select
+                return _step_configure_tiers(available, preset)
+            continue
 
-        if idx > 0 and idx < len(choices):
-            selected = choices[idx]
-            mapping[tier_id] = selected
-            console.print(f"  → {tier_name} = [green]{selected}[/green]")
+        mapping[tier_id] = selected
+        console.print(f"  → {tier_name} = [green]{selected}[/green]")
 
     return mapping
 
@@ -388,18 +420,26 @@ def step_default_provider(providers: dict) -> tuple[str, bool]:
     console.print("\n[bold]已配置的供应商:[/bold]")
     provider_ids = list(providers.keys())
 
-    for i, pid in enumerate(provider_ids, 1):
+    choices_list = []
+    for pid in provider_ids:
         p = providers[pid]
-        models = p.get("model_mapping", {})
-        summary = f"Sonnet: {models.get('sonnet', '?')} | Opus: {models.get('opus', '?')}"
-        console.print(f"  {i}. [cyan]{p.get('name', pid)}[/cyan]  —  {summary}")
+        mm = p.get("model_mapping", {})
+        summary = f"Sonnet: {mm.get('sonnet', '?')} | Opus: {mm.get('opus', '?')}"
+        display = f"  {p.get('name', pid):<20} — {summary}"
+        choices_list.append((display, pid))
 
-    choice = Prompt.ask(
-        "\n[cyan]?[/cyan] 默认使用哪个供应商?",
-        choices=[str(i) for i in range(1, len(provider_ids) + 1)],
-        default="1",
-    )
-    default_pid = provider_ids[int(choice) - 1]
+    default_q = [
+        inquirer.List(
+            "provider",
+            message="默认使用哪个供应商?",
+            choices=choices_list,
+            default=choices_list[0][1],
+        )
+    ]
+    default_a = inquirer.prompt(default_q)
+    if default_a is None:
+        return provider_ids[0], False
+    default_pid = default_a["provider"]
 
     auto_failover = Confirm.ask(
         "\n[cyan]?[/cyan] 启用自动故障转移? (主供应商不可用时自动切换)",

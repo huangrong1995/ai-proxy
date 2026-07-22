@@ -197,7 +197,6 @@ def step_select_provider(existing: dict) -> Optional[tuple[str, dict]]:
             message="选择供应商",
             choices=select_choices,
             carousel=True,
-            pointer="●",
         )
     ]
     answer = inquirer.prompt(questions)
@@ -282,7 +281,6 @@ def _configure_custom_provider() -> Optional[tuple[str, dict]]:
             message="API 格式",
             choices=[(fdesc, fid) for fid, fdesc in API_FORMAT_CHOICES],
             default="openai_chat",
-            pointer="●",
         )
     ]
     fmt_a = inquirer.prompt(fmt_q)
@@ -365,7 +363,6 @@ def _step_configure_tiers(available: list[str], preset: ProviderPreset) -> dict:
                 choices=choices_list,
                 default=default_value,
                 carousel=True,
-                pointer="●",
             )
         ]
         answer = inquirer.prompt(questions)
@@ -433,7 +430,6 @@ def step_default_provider(providers: dict) -> tuple[str, bool]:
             message="默认使用哪个供应商?",
             choices=choices_list,
             default=choices_list[0][1],
-            pointer="●",
         )
     ]
     default_a = inquirer.prompt(default_q)

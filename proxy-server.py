@@ -540,15 +540,11 @@ def detect_client_type(path: str, body: dict) -> str:
     return "unknown"
 
 
-def build_upstream_path(client_type: str, path: str) -> str:
-    """Map incoming path to upstream path based on API format."""
-    if client_type == "openai_chat":
-        # Codex path: /chat/completions -> /v1/chat/completions
-        if path.startswith("/v1/"):
-            return path
-        return f"/v1{path}" if not path.startswith("/") else f"/v1{path}"
-
-    # Anthropic (Claude Code)
+def build_upstream_path(api_format: str, path: str) -> str:
+    """Map incoming path to upstream path based on provider's API format."""
+    if api_format == "openai_chat":
+        return "/v1/chat/completions"
+    # Anthropic format — keep the original path (e.g. /v1/messages)
     return path
 
 
@@ -570,17 +566,18 @@ def forward_request(
     Returns: (status_code, response_headers, response_body)
     """
     upstream_base = provider.base_url.rstrip("/")
-    upstream_path = build_upstream_path(client_type, path)
+    upstream_path = build_upstream_path(provider.api_format, path)
     upstream_url = f"{upstream_base}{upstream_path}"
 
     # Build request
     req = urllib.request.Request(upstream_url, data=body_bytes, method="POST")
 
-    # Forward relevant headers
+    # Forward relevant headers (strip anthropic-specific for OpenAI endpoints)
     hop_by_hop = {"host", "content-length", "transfer-encoding",
                   "connection", "expect", "user-agent", "keep-alive"}
+    skip_headers = {"anthropic-version", "anthropic-beta", "x-api-key"} if provider.api_format == "openai_chat" else set()
     for k, v in original_headers.items():
-        if k.lower() not in hop_by_hop:
+        if k.lower() not in hop_by_hop and k.lower() not in skip_headers:
             req.add_header(k, v)
 
     # Set correct Host
@@ -592,7 +589,7 @@ def forward_request(
     # Otherwise, the client's original auth header from Claude Code is forwarded as-is.
     if provider.api_key:
         if provider.auth_type == "x-api-key":
-            if client_type == "anthropic":
+            if client_type == "anthropic" and provider.api_format == "anthropic":
                 req.add_header("x-api-key", provider.api_key)
                 req.add_header("anthropic-version", "2023-06-01")
             else:
@@ -624,6 +621,8 @@ def forward_request(
             resp_headers[k] = v
     resp_headers["Content-Length"] = str(len(resp_body))
 
+    resp_body = _convert_openai_response_to_anthropic(resp_body, provider)
+    resp_headers["Content-Length"] = str(len(resp_body))
     return resp.status, resp_headers, resp_body
 
 
@@ -631,6 +630,69 @@ def forward_request(
 # Request Transform Pipeline
 # =============================================================================
 
+
+
+def _convert_openai_response_to_anthropic(resp_body: bytes, provider) -> bytes:
+    """Convert OpenAI Chat response to Anthropic format."""
+    if provider.api_format != "openai_chat":
+        return resp_body
+    try:
+        data = json.loads(resp_body)
+        if "choices" not in data:
+            return resp_body
+        choice = data["choices"][0]
+        msg = choice.get("message", {})
+        usage = data.get("usage", {})
+        content = []
+        if msg.get("content"):
+            content.append({"type": "text", "text": msg["content"]})
+        if msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                content.append({
+                    "type": "tool_use",
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "input": json.loads(tc["function"].get("arguments", "{}")),
+                })
+        stop_map = {"stop": "end_turn", "tool_calls": "tool_use", "length": "max_tokens"}
+        anthropic = {
+            "id": data.get("id", "msg_000000"),
+            "type": "message",
+            "role": "assistant",
+            "content": content,
+            "model": data.get("model", ""),
+            "stop_reason": stop_map.get(choice.get("finish_reason", ""), choice.get("finish_reason", "")),
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+            },
+        }
+        return json.dumps(anthropic).encode("utf-8")
+    except Exception:
+        return resp_body
+
+
+def _convert_to_openai_format(body: dict) -> list:
+    """Convert Anthropic request body to OpenAI Chat format in-place."""
+    actions = []
+    if "tools" in body and isinstance(body["tools"], list):
+        openai_tools = []
+        for t in body["tools"]:
+            if "name" in t and "input_schema" in t:
+                openai_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t["input_schema"],
+                    }
+                })
+            else:
+                openai_tools.append(t)
+        body["tools"] = openai_tools
+        actions.append("converted tools to OpenAI format")
+    return actions
 
 
 def _convert_image_block(block: dict) -> dict:
@@ -698,6 +760,10 @@ def transform_request(
     if provider.api_format == "openai_chat" and body.get("stream"):
         body.setdefault("stream_options", {})["include_usage"] = True
         actions.append("injected stream_options.include_usage")
+
+    # 6. Convert Anthropic message format to OpenAI Chat format
+    if provider.api_format == "openai_chat":
+        actions.extend(_convert_to_openai_format(body))
 
     return json.dumps(body).encode("utf-8"), actions
 

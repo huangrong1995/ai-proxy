@@ -41,6 +41,16 @@ VERSION = "1.0.0"
 # ── Help text ────────────────────────────────────────────────────────────────
 
 HELP_EPILOG = f"""\
+命令:
+  wizard          交互式配置向导（首次配置供应商）
+  start           启动代理服务（默认命令，可省略）
+  stop            停止代理服务
+  restart         重启代理服务
+  status          查看代理运行状态和供应商健康
+  stats           查看使用统计（模型/Agent/供应商消耗）
+  config          查看当前配置摘要
+  switch          快速切换默认供应商
+
 环境变量:
   OPENCODE_API_KEY       OpenCode API Key（也可在向导中配置）
 
@@ -61,6 +71,7 @@ HELP_EPILOG = f"""\
   • 首次使用:  python3 ai-proxy wizard
   • 启动代理:  python3 ai-proxy start
   • 查看日志:  tail -f proxy.log
+  • 使用统计:  python3 ai-proxy stats
   • 重新配置:  python3 ai-proxy wizard
 """
 

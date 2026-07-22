@@ -1051,7 +1051,7 @@ def run_server(config: ProxyConfig, verbose: bool = False):
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
 
     print()
-    print(f"  ┌─ OpenCode Proxy v2 ─────────────────────────────┐")
+    print(f"  ┌─ AI Proxy ──────────────────────────────────────┐")
     print(f"  │  HTTPS: https://{config.listen}/                  │")
     print(f"  │  Log:   {LOG_FILE}            │")
     print(f"  │  CA:    {cert_dir}/ca.pem            │")
@@ -1137,7 +1137,7 @@ def cmd_status(config: ProxyConfig):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="OpenCode Proxy v2 — Multi-provider HTTPS proxy "
+        description="AI Proxy — Multi-provider HTTPS proxy "
                     "for Claude Code / Codex on WSL2"
     )
     parser.add_argument("--config", default=str(CONFIG_FILE),

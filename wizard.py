@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """AI Proxy — Interactive Setup Wizard"""
-import argparse, json, subprocess, sys, time
+import argparse, json, shutil, subprocess, sys, time
 from pathlib import Path
 
 try:
@@ -10,7 +10,6 @@ try:
     from rich.prompt import Prompt, Confirm
     from rich.text import Text
 except ImportError:
-    print("Installing rich...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "rich", "-q"])
     from rich.console import Console
     from rich.table import Table
@@ -22,7 +21,6 @@ try:
     import questionary
     from questionary import Style as QStyle
 except ImportError:
-    print("Installing questionary...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "questionary", "-q"])
     import questionary
     from questionary import Style as QStyle
@@ -34,14 +32,10 @@ from providers.presets import ProviderPreset, PROVIDER_PRESETS, find_preset, API
 from providers.model_fetcher import test_connection
 
 console = Console()
-
-# ── Design System ──
 C = {"p":"bold cyan","s":"bold green","w":"bold yellow","e":"bold red","m":"dim","a":"cyan"}
-
 QS = QStyle([
     ("qmark","bold cyan"), ("question","bold"), ("pointer","bold cyan"),
     ("highlighted","cyan"), ("selected","green"), ("answer","cyan"),
-    ("instruction","ansibrightblack"),
 ])
 
 TIERS = [
@@ -76,25 +70,20 @@ def save_config(config):
     CONFIG_FILE.parent.mkdir(parents=True,exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config,indent=2,ensure_ascii=False)+"\n")
 
-    if Confirm.ask("  ◈  同步到 Claude Code 设置？\n  将更新 ~/.claude/settings.json 中的 API、模型、证书配置", default=True):
-        sync_to_claude(config)
-    """Sync proxy config to ~/.claude/settings.json."""
+def sync_to_claude(config):
     claude_dir = Path.home() / ".claude"
     claude_cfg = claude_dir / "settings.json"
     claude_dir.mkdir(parents=True,exist_ok=True)
     if claude_cfg.exists():
         backup = claude_dir / "settings.json.ai-proxy.bak"
         if not backup.exists():
-            import shutil
             shutil.copy2(str(claude_cfg),str(backup))
             print_info(f"原配置已备份 -> {backup}")
-
     default_pid = config.get("default_provider","")
     providers = config.get("providers",{})
     default_p = providers.get(default_pid,next(iter(providers.values()),{}))
     api_key = default_p.get("api_key","")
     mm = default_p.get("model_mapping",{})
-
     existing = json.loads(claude_cfg.read_text()) if claude_cfg.exists() else {}
     env = existing.get("env",{})
     env["ANTHROPIC_BASE_URL"] = f"https://{config.get('listen','127.0.0.1:19443')}/"
@@ -148,11 +137,11 @@ def configure_tiers(available,preset):
             choices.append(questionary.Choice(m+"  ◆ 推荐" if rec else m,value=m))
             if rec: default = m
         sel = questionary.select(f"  [{tn}]  {td}",choices=choices,default=default,
-                                 pointer="\u25cf",qmark="\u25c8",style=QS).ask()
+                                 pointer="●",qmark="◈",style=QS).ask()
         if sel is None: continue
         if sel==skip:
-            if required and not questionary.confirm(f"  \u25c8  {tn} 建议配置，确定跳过?",
-                                                    default=False,qmark="\u25c8",style=QS).ask():
+            if required and not questionary.confirm(f"  ◈  {tn} 建议配置，确定跳过?",
+                                                    default=False,qmark="◈",style=QS).ask():
                 return configure_tiers(available,preset)
             continue
         mapping[tid] = sel
@@ -160,20 +149,15 @@ def configure_tiers(available,preset):
     return mapping
 
 def configure_vision_model(available, preset, tier_map):
-    """Let user pick a vision model for image requests."""
-    console.print(); print_step_header(2)
     sug = preset.tier_suggestions.get("vision", "minimax-m3")
-    models = [m for m in available if m not in tier_map.values()] + list(tier_map.values())
-    models = list(dict.fromkeys(models))  # dedupe preserve order
-    choices = [questionary.Choice("(不配置 — 发图可能失败)", value="")]
+    models = list(dict.fromkeys(list(tier_map.values()) + available))  # dedupe
+    choices = [questionary.Choice("(不配置)", value="")]
     for m in models:
         rec = m == sug
         choices.append(questionary.Choice(m + "  ◆ 推荐" if rec else m, value=m))
     default = sug if sug in models else ""
-    sel = questionary.select(
-        "  ◈ 默认视觉模型 — 发图片时自动切换至此模型",
-        choices=choices, default=default, pointer="●", qmark="◈", style=QS
-    ).ask()
+    sel = questionary.select("  ◈  默认视觉模型 — 发图片时自动切换至此模型",
+        choices=choices, default=default, pointer="●", qmark="◈", style=QS).ask()
     if sel: print_ok(f"视觉模型 = [bold]{sel}[/bold]")
     else: print_info("未配置视觉模型，发图时将警告")
     return sel or ""
@@ -182,7 +166,7 @@ def pick_provider(existing):
     print_step_header(1); print_section("选择供应商")
     choices = [questionary.Choice(f"{p.name}  —  {p.base_url}",value=p.id) for p in PROVIDER_PRESETS]
     choices.append(questionary.Choice("自定义供应商  —  手动输入 URL 和格式",value="__custom__"))
-    pid = questionary.select("  \u25c8  供应商",choices=choices,pointer="\u25cf",qmark="",style=QS).ask()
+    pid = questionary.select("  ◈  供应商",choices=choices,pointer="●",qmark="",style=QS).ask()
     if pid is None: return None
     return configure_custom() if pid=="__custom__" else configure_preset(pid,existing)
 
@@ -214,9 +198,9 @@ def configure_custom():
     name = Prompt.ask(f"  [{C['p']}]?[/{C['p']}] 供应商名称",default="my-provider")
     url = Prompt.ask(f"  [{C['p']}]?[/{C['p']}] API URL")
     url = "https://"+url if not url.startswith("http") else url
-    fmt = questionary.select("  \u25c8  API 格式",
+    fmt = questionary.select("  ◈  API 格式",
         choices=[questionary.Choice(desc,value=fid) for fid,desc in API_FORMAT_CHOICES],
-        default="openai_chat",pointer="\u25cf",qmark="",style=QS).ask()
+        default="openai_chat",pointer="●",qmark="",style=QS).ask()
     if fmt is None: return None
     at = "x-api-key" if fmt=="anthropic" else "bearer"
     print_info(f"认证方式: {at}"); key = read_key()
@@ -241,7 +225,7 @@ def pick_default(providers):
     for pid in pids:
         p,mm = providers[pid],providers[pid].get("model_mapping",{})
         choices.append(questionary.Choice(f"{p['name']}  —  Sonnet: {mm.get('sonnet','?')}  /  Opus: {mm.get('opus','?')}",value=pid))
-    d = questionary.select("  \u25c8  默认供应商",choices=choices,pointer="\u25cf",qmark="",style=QS).ask() or pids[0]
+    d = questionary.select("  ◈  默认供应商",choices=choices,pointer="●",qmark="",style=QS).ask() or pids[0]
     af = Confirm.ask(f"  [{C['p']}]?[/{C['p']}] 启用自动故障转移？",default=False)
     return d,af
 
@@ -282,7 +266,7 @@ def wizard():
     if Confirm.ask(f"  [{C['p']}]?[/{C['p']}] 立即启动代理？",default=True):
         sp = SCRIPT_DIR/"proxy-server.py"
         if not sp.exists(): return print_err("proxy-server.py 未找到")
-        r = subprocess.run(["pgrep","-f","proxy-server.py"],capture_output=True,text=True,timeout=5)
+        r = subprocess.run(["pgrep","-f",str(sp)],capture_output=True,text=True,timeout=5)
         if r.returncode==0 and r.stdout.strip(): return print_warn("代理已在运行中")
         try:
             proc = subprocess.Popen([sys.executable,str(sp)],
@@ -303,14 +287,21 @@ def main():
         if not c.get("providers"): return print_warn("尚无供应商")
         choices=[questionary.Choice(f"{p['name']}{'  (当前)' if pid==c.get('default_provider') else ''}",value=pid)
                  for pid,p in c["providers"].items()]
-        nd = questionary.select("  \u25c8  切换至",choices=choices,pointer="\u25cf",qmark="",style=QS).ask()
-        if nd: c["default_provider"]=nd; save_config(c); sync_to_claude(c); print_ok("默认供应商已切换")
+        nd = questionary.select("  ◈  切换至",choices=choices,pointer="●",qmark="",style=QS).ask()
+        if nd:
+            c["default_provider"]=nd; save_config(c)
+            if Confirm.ask("  ◈  同步到 Claude Code 设置？", default=True):
+                sync_to_claude(c)
+            print_ok("默认供应商已切换")
     elif args.show:
         c = load_config()
         (render_summary(c) if c.get("providers") else print_warn("尚无供应商"))
     elif args.provider:
         c = load_config(); r = configure_preset(args.provider,c)
-        if r: pid,cfg=r; c.setdefault("providers",{})[pid]=cfg; save_config(c); sync_to_claude(c)
+        if r:
+            pid,cfg=r; c.setdefault("providers",{})[pid]=cfg; save_config(c)
+            if Confirm.ask("  ◈  同步到 Claude Code 设置？", default=True):
+                sync_to_claude(c)
     else: wizard()
 
 if __name__ == "__main__":

@@ -50,7 +50,11 @@ def save_config(config):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
 
-def read_key():
+def read_key(existing_key=""):
+    if existing_key:
+        console.print(f"  [dim]已有 Key: {existing_key[:8]}...{existing_key[-4:]}[/dim]")
+        k = getpass.getpass("  API Key (Enter to keep): ").strip()
+        return k or existing_key
     while True:
         k = getpass.getpass("  API Key: ").strip()
         if k: return k
@@ -113,8 +117,12 @@ def configure_preset(pid, existing):
     console.print(f"\n{'━'*50}\n  供应商: [cyan]{preset.name}[/cyan]\n  默认地址: [dim]{preset.base_url}[/dim]")
     url = Prompt.ask("  [cyan]?[/cyan] API URL", default=(ep.get("base_url", preset.base_url) if ep else preset.base_url))
     ek = ep.get("api_key", "") if ep else ""
-    if ek: console.print("  [dim]已保存 API Key，留空使用现有值[/dim]")
-    key = getpass.getpass("  API Key: ") or ek
+    if ek:
+        hint = f"  API Key (Enter to keep existing)"
+        console.print(f"  [dim]已有 Key: {ek[:8]}...{ek[-4:]}[/dim]")
+    else:
+        hint = "  API Key"
+    key = getpass.getpass(hint + ": ").strip() or ek
     if not key: return console.print("[red]API Key 不能为空[/red]") or None
     console.print(f"\n  → 测试连接 [dim]{url}/v1/models[/dim] ...")
     ok, err, models = test_connection(url, key, preset.api_format)

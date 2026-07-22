@@ -624,7 +624,6 @@ def forward_request(
     if b"event: message_start" in resp_body:
         resp_headers["Content-Type"] = "text/event-stream"
 
-    log.info("[fw] before conversion")
     try:
         resp_body = _convert_openai_response_to_anthropic(resp_body, provider, body_bytes)
         log.info(f"[fw] after conversion: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")

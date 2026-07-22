@@ -106,6 +106,7 @@ def sync_to_claude(config):
     env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = mm.get("haiku") or ""
     env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = mm.get("sonnet") or ""
     env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = mm.get("opus") or ""
+    env["ANTHROPIC_DEFAULT_FABLE_MODEL"] = mm.get("fable") or ""
     existing["env"] = env
     claude_cfg.write_text(json.dumps(existing,indent=2,ensure_ascii=False)+"\n")
     print_ok("~/.claude/settings.json 已同步")

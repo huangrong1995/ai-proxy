@@ -29,7 +29,6 @@ def record_request(pid, pname, model, status, inp=0, out=0, cache=False, agent="
         pass
 
 def extract_tokens(body, client_type):
-    """Match the function names called by server.py."""
     try:
         d = json.loads(body)
         if client_type == "anthropic":
@@ -46,7 +45,6 @@ def get_response_model(body):
     except: return "?"
 
 def detect_agent(client_type, path, headers):
-    """Match the detect_agent signature expected by server.py."""
     ua = headers.get("User-Agent","").lower()
     if "claude" in ua: return "Claude Code"
     if "codex" in ua or "openai" in ua: return "Codex CLI"

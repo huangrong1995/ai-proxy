@@ -743,11 +743,17 @@ def _clean_schema(schema: dict, is_root: bool = True) -> dict:
     # Remove format: uri if present
     if schema.get("format") == "uri":
         schema.pop("format", None)
+    # Strip default: null — confuses models into sending null values
+    if "default" in schema and schema.get("default") is None:
+        schema.pop("default")
     # Recurse into properties
     if "properties" in schema and isinstance(schema["properties"], dict):
         for k, v in schema["properties"].items():
             if isinstance(v, dict):
+                if v.get("default") is None:
+                    v.pop("default", None)
                 schema["properties"][k] = _clean_schema(v, False)
+
     # Recurse into items (array schemas)
     if "items" in schema and isinstance(schema["items"], dict):
         schema["items"] = _clean_schema(schema["items"], False)

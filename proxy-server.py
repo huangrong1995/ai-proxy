@@ -630,6 +630,7 @@ def forward_request(
     for k, v in resp.headers.items():
         if k.lower() not in hop_by_hop:
             resp_headers[k] = v
+    resp_headers.pop("Content-Encoding", None)
     resp_headers["Content-Length"] = str(len(resp_body))
     if b"event: message_start" in resp_body:
         resp_headers["Content-Type"] = "text/event-stream"
@@ -638,6 +639,7 @@ def forward_request(
         resp_body = _convert_openai_response_to_anthropic(resp_body, provider, original_body or body_bytes)
     except Exception as _ce:
         import traceback; log.warning(traceback.format_exc())
+    resp_headers.pop("Content-Encoding", None)
     resp_headers["Content-Length"] = str(len(resp_body))
     if b"event: message_start" in resp_body:
         resp_headers["Content-Type"] = "text/event-stream"

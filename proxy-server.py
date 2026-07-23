@@ -559,6 +559,7 @@ def forward_request(
     body_bytes: bytes,
     original_headers: dict,
     timeout: int = 120,
+    original_body: bytes = b"",
 ) -> tuple[int, dict, bytes]:
     """
     Forward a transformed request to the upstream provider.
@@ -625,7 +626,7 @@ def forward_request(
         resp_headers["Content-Type"] = "text/event-stream"
 
     try:
-        resp_body = _convert_openai_response_to_anthropic(resp_body, provider, body_bytes)
+        resp_body = _convert_openai_response_to_anthropic(resp_body, provider, original_body or body_bytes)
         log.info(f"[fw] after conversion: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     except Exception as _ce:
         log.warning(f"[fw] conversion exception: {_ce}")
@@ -685,8 +686,11 @@ def _convert_openai_response_to_anthropic(resp_body: bytes, provider, original_b
         }
         result = json.dumps(anthropic).encode("utf-8")
         # If original request had stream=true, wrap in SSE
-        log.info(f"[resp_convert] _was_streaming={getattr(provider, '_was_streaming', False)}")
-        requested_stream = getattr(provider, "_was_streaming", False)
+        requested_stream = False
+        try:
+            orig = json.loads(original_body) if original_body else {}
+            requested_stream = orig.get('stream', False)
+        except: pass
         if requested_stream:
             sse_events = []
             content_blocks = anthropic.get("content", [])
@@ -805,7 +809,7 @@ def transform_request(
     if provider.api_format == "openai_chat" and body.get("stream"):
         body["stream"] = False
         actions.append("disabled streaming for OpenAI format")
-        provider._was_streaming = True
+        pass  # streaming will be detected by forward_request from body_bytes
 
     # 6. Convert Anthropic message format to OpenAI Chat format
     if provider.api_format == "openai_chat":
@@ -982,7 +986,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         try:
             status, resp_headers, resp_body = forward_request(
                 provider, client_type, self.path, transformed,
-                dict(self.headers.items())
+                dict(self.headers.items()),
+                original_body=body
             )
 
             # Record success
@@ -997,13 +1002,31 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             log.info(f"[fw] response CT={resp_headers.get('Content-Type','?')}, SSE in body={b'event: message_start' in resp_body}")
 
             self.send_response(status)
-            for k, v in resp_headers.items():
-                self.send_header(k, v)
-            self.end_headers()
-            try:
-                self.wfile.write(resp_body)
-            except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, BrokenPipeError, OSError):
-                pass  # Client disconnected, ignore
+            is_sse = resp_headers.get("Content-Type", "") == "text/event-stream"
+            if is_sse:
+                # SSE streaming: no Content-Length, flush each event
+                for k, v in resp_headers.items():
+                    if k.lower() != "content-length":
+                        self.send_header(k, v)
+                self.end_headers()
+                try:
+                    # Split SSE body into individual events and send each
+                    sse_text = resp_body.decode("utf-8")
+                    for event in sse_text.split("\n\n"):
+                        if event.strip():
+                            self.wfile.write((event + "\n\n").encode("utf-8"))
+                            self.wfile.flush()
+                            import time; time.sleep(0.05)  # Small delay between events
+                except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, BrokenPipeError, OSError):
+                    pass
+            else:
+                for k, v in resp_headers.items():
+                    self.send_header(k, v)
+                self.end_headers()
+                try:
+                    self.wfile.write(resp_body)
+                except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, BrokenPipeError, OSError):
+                    pass
 
         except urllib.error.HTTPError as e:
             err_body = e.read()
@@ -1022,7 +1045,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     try:
                         status2, h2, b2 = forward_request(
                             nprovider, client_type, self.path, transformed,
-                            dict(self.headers.items())
+                            dict(self.headers.items()),
+                            original_body=body
                         )
                         pm.record_success(nid)
                         log.info(f"  -> {status2} OK ({len(b2)} bytes) [{nid}] (retry)")

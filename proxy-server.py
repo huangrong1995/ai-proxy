@@ -32,6 +32,7 @@ import os
 import random
 import ssl
 import subprocess
+import time
 import sys
 import threading
 import time
@@ -614,26 +615,29 @@ def forward_request(
 
     resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
     resp_body = resp.read()
+    # Decompress Brotli (urllib doesn't support br auto-decompress)
+    content_encoding = resp.headers.get("Content-Encoding", "")
+    if content_encoding == "br":
+        try:
+            import brotli
+            resp_body = brotli.decompress(resp_body)
+            log.info(f"[decompress] brotli: {len(resp_body)} bytes decompressed")
+        except ImportError:
+            log.warning("[decompress] brotli not available, response will be corrupted!")
 
     # Build response headers
     resp_headers = {}
     for k, v in resp.headers.items():
         if k.lower() not in hop_by_hop:
             resp_headers[k] = v
-    log.info(f"[fw] check1: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     resp_headers["Content-Length"] = str(len(resp_body))
     if b"event: message_start" in resp_body:
         resp_headers["Content-Type"] = "text/event-stream"
 
     try:
         resp_body = _convert_openai_response_to_anthropic(resp_body, provider, original_body or body_bytes)
-        log.info(f"[fw] after conversion: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     except Exception as _ce:
-        log.warning(f"[fw] conversion exception: {_ce}")
         import traceback; log.warning(traceback.format_exc())
-        log.warning(f"[conv] exception: {_ce}")
-        import traceback; log.warning(traceback.format_exc())
-    log.info(f"[fw] check1: {len(resp_body)}b, has_SSE={b'event: message_start' in resp_body}")
     resp_headers["Content-Length"] = str(len(resp_body))
     if b"event: message_start" in resp_body:
         resp_headers["Content-Type"] = "text/event-stream"
@@ -999,7 +1003,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             record_request(pid, provider.name, model_name, status,
                           inp_tok, out_tok, cache_hit, agent)
             log.info(f"  -> {status} OK ({len(resp_body)} bytes) [{pid}]")
-            log.info(f"[fw] response CT={resp_headers.get('Content-Type','?')}, SSE in body={b'event: message_start' in resp_body}")
+            
 
             self.send_response(status)
             is_sse = resp_headers.get("Content-Type", "") == "text/event-stream"

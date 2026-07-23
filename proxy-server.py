@@ -757,6 +757,8 @@ def _clean_schema(schema: dict, is_root: bool = True) -> dict:
 def _convert_to_openai_format(body: dict) -> list:
     """Convert Anthropic request body to OpenAI Chat format in-place."""
     actions = []
+    
+    # 1. Convert tool definitions
     if "tools" in body and isinstance(body["tools"], list):
         openai_tools = []
         for t in body["tools"]:
@@ -776,6 +778,105 @@ def _convert_to_openai_format(body: dict) -> list:
                 openai_tools.append(t)
         body["tools"] = openai_tools
         actions.append("converted tools to OpenAI format")
+    
+    # 2. Convert tool_choice
+    if "tool_choice" in body:
+        tc = body["tool_choice"]
+        if isinstance(tc, str):
+            body["tool_choice"] = "required" if tc == "any" else tc
+        elif isinstance(tc, dict) and tc.get("type") == "any":
+            body["tool_choice"] = "required"
+    
+    # 3. Convert messages (tool_use → tool_calls, tool_result → tool role)
+    if "messages" in body and isinstance(body["messages"], list):
+        converted_msgs = []
+        for msg in body["messages"]:
+            role = msg.get("role", "user")
+            content = msg.get("content", [])
+            
+            if isinstance(content, str):
+                converted_msgs.append(msg)
+                continue
+            
+            if isinstance(content, list):
+                has_tool_blocks = any(
+                    isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result")
+                    for b in content
+                )
+                if not has_tool_blocks:
+                    converted_msgs.append(msg)
+                    continue
+                
+                if role == "assistant":
+                    text_parts = []
+                    tool_calls = []
+                    for block in content:
+                        if not isinstance(block, dict):
+                            text_parts.append(str(block))
+                            continue
+                        bt = block.get("type", "")
+                        if bt == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif bt == "tool_use":
+                            tool_calls.append({
+                                "id": block.get("id", ""),
+                                "type": "function",
+                                "function": {
+                                    "name": block.get("name", ""),
+                                    "arguments": json.dumps(block.get("input", {}), ensure_ascii=False),
+                                }
+                            })
+                        elif bt == "thinking" or bt == "redacted_thinking":
+                            pass  # Drop thinking blocks for OpenAI
+                    new_msg = {"role": "assistant"}
+                    content_text = "".join(text_parts)
+                    if tool_calls:
+                        if content_text.strip():
+                            new_msg["content"] = content_text
+                        else:
+                            new_msg["content"] = None
+                        new_msg["tool_calls"] = tool_calls
+                    else:
+                        new_msg["content"] = content_text
+                    converted_msgs.append(new_msg)
+                
+                elif role == "user":
+                    new_parts = []
+                    for block in content:
+                        if not isinstance(block, dict):
+                            new_parts.append(str(block))
+                            continue
+                        bt = block.get("type", "")
+                        if bt == "text":
+                            new_parts.append({"type": "text", "text": block.get("text", "")})
+                        elif bt == "image":
+                            src = block.get("source", {})
+                            media = src.get("media_type", "image/png")
+                            data = src.get("data", "")
+                            new_parts.append({"type": "image_url", "image_url": {"url": f"data:{media};base64,{data}"}})
+                        elif bt == "tool_result" and role == "user":
+                            tid = block.get("tool_use_id", "")
+                            result_content = block.get("content", "")
+                            if isinstance(result_content, list):
+                                result_text = "".join(
+                                    p.get("text", "") for p in result_content if isinstance(p, dict) and p.get("type") == "text"
+                                )
+                            else:
+                                result_text = str(result_content) if result_content is not None else ""
+                            converted_msgs.append({"role": "tool", "tool_call_id": tid, "content": result_text})
+                            continue  # Already added
+                    if new_parts:
+                        converted_msgs.append({"role": "user", "content": new_parts})
+                
+                elif role == "tool" or role == "assistant_tool":  # Already OpenAI format
+                    converted_msgs.append(msg)
+            
+            else:
+                converted_msgs.append(msg)
+        
+        body["messages"] = converted_msgs
+        actions.append("converted messages to OpenAI format")
+    
     return actions
 
 

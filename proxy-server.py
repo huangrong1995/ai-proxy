@@ -731,6 +731,29 @@ def _convert_openai_response_to_anthropic(resp_body: bytes, provider, original_b
         return resp_body
 
 
+def _clean_schema(schema: dict, is_root: bool = True) -> dict:
+    """Normalize JSON schema for OpenAI tool parameters (cc-switch compat)."""
+    if not isinstance(schema, dict):
+        return schema
+    missing_type = is_root and "type" not in schema
+    if missing_type:
+        schema["type"] = "object"
+    if missing_type and "properties" not in schema:
+        schema["properties"] = {}
+    # Remove format: uri if present
+    if schema.get("format") == "uri":
+        schema.pop("format", None)
+    # Recurse into properties
+    if "properties" in schema and isinstance(schema["properties"], dict):
+        for k, v in schema["properties"].items():
+            if isinstance(v, dict):
+                schema["properties"][k] = _clean_schema(v, False)
+    # Recurse into items (array schemas)
+    if "items" in schema and isinstance(schema["items"], dict):
+        schema["items"] = _clean_schema(schema["items"], False)
+    return schema
+
+
 def _convert_to_openai_format(body: dict) -> list:
     """Convert Anthropic request body to OpenAI Chat format in-place."""
     actions = []
@@ -738,12 +761,15 @@ def _convert_to_openai_format(body: dict) -> list:
         openai_tools = []
         for t in body["tools"]:
             if "name" in t and "input_schema" in t:
+                params = t["input_schema"]
+                if isinstance(params, dict):
+                    params = _clean_schema(params.copy())
                 openai_tools.append({
                     "type": "function",
                     "function": {
                         "name": t["name"],
                         "description": t.get("description", ""),
-                        "parameters": t["input_schema"],
+                        "parameters": params,
                     }
                 })
             else:

@@ -666,6 +666,10 @@ def _convert_openai_response_to_anthropic(resp_body: bytes, provider, original_b
         msg = choice.get("message", {})
         usage = data.get("usage", {})
         content = []
+        # Add reasoning/thinking content if present (DeepSeek models)
+        reasoning = msg.get("reasoning_content")
+        if reasoning:
+            content.append({"type": "thinking", "thinking": reasoning})
         if msg.get("content") is not None:
             content.append({"type": "text", "text": msg["content"] or ""})
         if msg.get("tool_calls"):
